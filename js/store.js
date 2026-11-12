@@ -11,8 +11,10 @@
       version: 1,
       settings: {
         targets: { kcal: 2000, p: 120, c: 220, f: 70 },
-        usdaKey: 'DEMO_KEY', useOFF: true, useUSDA: true,
-        driveClientId: '', imperial: false, u: 0
+        // targets.c is the NET carb target (rev 3). Earlier revisions stored a total-carb target under the same key;
+        // the number carries over unchanged.
+        usdaKey: 'DEMO_KEY', useOFF: false, useUSDA: true,
+        driveClientId: '', imperial: false, sv: 3, u: 0
       },
       foods: {},      // id -> food (custom foods + remote foods that were logged/favorited)
       entries: {},    // id -> entry (deleted ones stay as tombstones {del:true})
@@ -42,6 +44,9 @@
     var out = { version: 1 };
     out.settings = Object.assign({}, d.settings, s.settings || {});
     out.settings.targets = Object.assign({}, d.settings.targets, (s.settings && s.settings.targets) || {});
+    // Settings written before rev 3 (no sv): USDA becomes the primary database and Open Food Facts search an opt-in.
+    // One-time: once sv is 3 the user's own choice for useOFF is kept. Idempotent, so it is safe on every load and merge.
+    if (s.settings && !((s.settings.sv || 0) >= 3)) { out.settings.useOFF = false; out.settings.sv = 3; }
     ['foods', 'entries', 'usage', 'favorites'].forEach(function (k) {
       out[k] = s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]) ? s[k] : {};
     });
@@ -172,7 +177,7 @@
         var e = {
           id: uid(), date: p.date, meal: p.meal, foodId: p.food.id, name: p.food.name, brand: p.food.brand || '',
           qty: N.num(p.qty), unit: p.unit.label, unitG: p.unit.g, amount: N.round(amount, 1), base: p.food.base || 'g',
-          kcal: N.round(n.kcal, 1), p: N.round(n.p, 1), c: N.round(n.c, 1), f: N.round(n.f, 1), t: t, u: t
+          kcal: N.round(n.kcal, 1), p: N.round(n.p, 1), c: N.round(n.c, 1), f: N.round(n.f, 1), fi: N.round(n.fi, 1), t: t, u: t
         };
         st.state.entries[e.id] = e;
         var use = st.lastPortion(p.food.id) || { n: 0 };
@@ -196,11 +201,11 @@
         if (ch.date) n.date = ch.date;
         if (ch.qty != null && ch.unit) {
           var amount = N.portionAmount(ch.qty, ch.unit), food = e.foodId && st.getFood(e.foodId), per100 = food && food.per100;
-          if (!per100 && e.amount > 0) per100 = { kcal: e.kcal / e.amount * 100, p: e.p / e.amount * 100, c: e.c / e.amount * 100, f: e.f / e.amount * 100 };
+          if (!per100 && e.amount > 0) per100 = { kcal: e.kcal / e.amount * 100, p: e.p / e.amount * 100, c: e.c / e.amount * 100, f: e.f / e.amount * 100, fi: (e.fi || 0) / e.amount * 100 };
           if (per100) {
             var v = N.nutrientsFor(per100, amount);
             n.qty = N.num(ch.qty); n.unit = ch.unit.label; n.unitG = ch.unit.g; n.amount = N.round(amount, 1);
-            n.kcal = N.round(v.kcal, 1); n.p = N.round(v.p, 1); n.c = N.round(v.c, 1); n.f = N.round(v.f, 1);
+            n.kcal = N.round(v.kcal, 1); n.p = N.round(v.p, 1); n.c = N.round(v.c, 1); n.f = N.round(v.f, 1); n.fi = N.round(v.fi, 1);
             if (e.foodId && st.lastPortion(e.foodId)) { st.state.usage[e.foodId].qty = n.qty; st.state.usage[e.foodId].unit = n.unit; st.state.usage[e.foodId].t = now(); }
           }
         }

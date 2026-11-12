@@ -6,7 +6,7 @@
   var N = FT.nutrition || (typeof require !== 'undefined' ? require('./nutrition.js') : null);
 
   var OFF = 'https://world.openfoodfacts.org';
-  var OFF_FIELDS = 'code,product_name,product_name_en,brands,nutriments,serving_size,serving_quantity,serving_quantity_unit,product_quantity,product_quantity_unit,quantity';
+  var OFF_FIELDS = 'code,product_name,product_name_en,brands,nutriments,serving_size,serving_quantity,serving_quantity_unit,product_quantity,product_quantity_unit,quantity,countries_tags';
   var USDA = 'https://api.nal.usda.gov/fdc/v1';
 
   function has(v) { return v !== undefined && v !== null && v !== ''; }
@@ -19,9 +19,14 @@
     if (!name || !p.code) return null;
     var kcal = nt['energy-kcal_100g'];
     if (!has(kcal) && has(nt.energy_100g)) kcal = N.num(nt.energy_100g) / 4.184;
-    var pr = nt.proteins_100g, c = nt.carbohydrates_100g, f = nt.fat_100g;
+    var pr = nt.proteins_100g, c = nt.carbohydrates_100g, f = nt.fat_100g, fi = N.num(nt.fiber_100g);
     if (!has(kcal) && !has(pr) && !has(c) && !has(f)) return null;
     if (!has(kcal)) kcal = N.kcalFromMacros(pr, c, f);
+    // Label conventions differ: US/Canada "carbohydrates" include fiber, most other countries (EU etc.) list carbs
+    // WITHOUT fiber. The app stores total carbs (US convention) and derives net = carbs - fiber, so for non-US labels
+    // fiber is added back; otherwise it would be subtracted twice. Products with no country are read as US labels.
+    var tags = p.countries_tags || [], us = !tags.length || tags.some(function (t) { return /united-states|canada/.test(t); });
+    if (has(c) && fi > 0 && !us) c = N.num(c) + fi;
     var serving = N.parseServing(p.serving_size), units = [];
     var base = (p.serving_quantity_unit === 'ml' || p.product_quantity_unit === 'ml' || (serving && serving.base === 'ml') ||
       /\d\s*(ml|cl|l)\b/i.test(p.quantity || '')) ? 'ml' : 'g';
@@ -35,7 +40,7 @@
     if (pq > 0 && pq !== sq) units.push({ label: '1 package (' + N.fmt(pq) + ' ' + base + ')', g: pq });
     return {
       id: 'off:' + p.code, src: 'off', code: String(p.code), name: name, brand: String(p.brands || '').split(',')[0].trim(),
-      per100: { kcal: N.round(N.num(kcal), 1), p: N.round(N.num(pr), 1), c: N.round(N.num(c), 1), f: N.round(N.num(f), 1) },
+      per100: { kcal: N.round(N.num(kcal), 1), p: N.round(N.num(pr), 1), c: N.round(N.num(c), 1), f: N.round(N.num(f), 1), fi: N.round(fi, 1) },
       base: base, units: units
     };
   }
@@ -73,9 +78,10 @@
   }
   function usdaPer100(list) {
     var p = usdaNutrient(list, [1003], ['203']), c = usdaNutrient(list, [1005], ['205']), f = usdaNutrient(list, [1004], ['204']);
+    var fi = usdaNutrient(list, [1079], ['291']);          // Fiber, total dietary
     var kcal = usdaNutrient(list, [1008, 2047, 2048], ['208', '957', '958']);
     if (kcal === null) kcal = N.kcalFromMacros(p, c, f);
-    return { kcal: N.round(kcal, 1), p: N.round(p || 0, 1), c: N.round(c || 0, 1), f: N.round(f || 0, 1) };
+    return { kcal: N.round(kcal, 1), p: N.round(p || 0, 1), c: N.round(c || 0, 1), f: N.round(f || 0, 1), fi: N.round(fi || 0, 1) };
   }
   function usdaUnit(m) {
     var g = N.num(m.gramWeight); if (!(g > 0)) return null;
@@ -109,7 +115,11 @@
   function searchUSDA(q, key, opts) {
     var url = USDA + '/foods/search?api_key=' + encodeURIComponent(key || 'DEMO_KEY') + '&pageSize=20&query=' + encodeURIComponent(q) +
       '&dataType=' + encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS),Branded');
-    return getJSON(url, opts).then(function (d) { return (d.foods || []).map(normalizeUSDA).filter(Boolean); });
+    return getJSON(url, opts).then(function (d) {
+      // Generic foods (Foundation, SR Legacy, Survey) before branded products; API relevance order kept inside each group.
+      var foods = (d.foods || []).map(normalizeUSDA).filter(Boolean);
+      return foods.filter(function (f) { return f.dataType !== 'Branded'; }).concat(foods.filter(function (f) { return f.dataType === 'Branded'; }));
+    });
   }
   /* Full record: brings foodPortions (household units) for foods whose search row had none. */
   function detailUSDA(fdcId, key, opts) {

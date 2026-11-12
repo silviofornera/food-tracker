@@ -37,13 +37,13 @@
     $('#date-label').innerHTML = esc(rel) + '<small>' + esc(d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })) + '</small>';
     var t = store.totalsFor(ui.date), tg = settings().targets, left = tg.kcal - t.kcal;
     function pct(v, max) { return max > 0 ? Math.min(100, v / max * 100).toFixed(1) : 0; }
-    function macro(k, label) {
-      return '<div class="m-' + k + '">' + label + ' <b>' + kc(t[k]) + '</b> / ' + kc(tg[k]) + ' g<div class="bar"><i style="width:' + pct(t[k], tg[k]) + '%"></i></div></div>';
+    function macro(k, label, val) {     // val: totals key ('nc' = net carbs, measured against the targets.c net-carb target)
+      return '<div class="m-' + k + '">' + label + ' <b>' + kc(t[val || k]) + '</b> / ' + kc(tg[k]) + ' g<div class="bar"><i style="width:' + pct(t[val || k], tg[k]) + '%"></i></div></div>';
     }
     $('#totals').innerHTML =
       '<div class="kcal-line"><b>' + kc(t.kcal) + '</b><span>/ ' + kc(tg.kcal) + ' kcal</span><span class="left' + (left < 0 ? ' over' : '') + '">' +
       (left >= 0 ? kc(left) + ' left' : kc(-left) + ' over') + '</span></div><div class="bar"><i style="width:' + pct(t.kcal, tg.kcal) + '%"></i></div>' +
-      '<div class="macros">' + macro('p', 'Protein') + macro('c', 'Carbs') + macro('f', 'Fat') + '</div>';
+      '<div class="macros">' + macro('p', 'Protein') + macro('c', 'Net carbs', 'nc') + macro('f', 'Fat') + '</div>';
     $('#sync-btn').hidden = !settings().driveClientId;
     q.placeholder = ui.meal ? 'Add to ' + N.MEAL_LABEL[ui.meal] : 'Search food to add';
   }
@@ -70,7 +70,7 @@
           var sub = e.foodId ? unitText(e.qty, { label: e.unit, g: e.unitG }) + (e.unitG !== 1 ? ' · ' + N.fmt(e.amount, 0) + ' ' + e.base : '') : 'quick add';
           return '<div class="entry' + (ui.flash === e.id ? ' flash' : '') + '" data-act="entry" data-id="' + e.id + '"><div class="row-main"><div class="row-name">' + esc(e.name) +
             (e.brand ? ' <span class="brand">' + esc(e.brand) + '</span>' : '') + '</div><div class="row-sub">' + esc(sub) + '</div></div>' +
-            '<div class="row-kcal">' + kc(e.kcal) + '<small>P' + kc(e.p) + ' C' + kc(e.c) + ' F' + kc(e.f) + '</small></div></div>';
+            '<div class="row-kcal">' + kc(e.kcal) + '<small>P' + kc(e.p) + ' NC' + kc(N.net(e)) + ' F' + kc(e.f) + '</small></div></div>';
         }).join('') + '</div>';
       }
     });
@@ -96,12 +96,12 @@
     var local = store.searchLocal(ui.query, 20), seen = {}, html = '';
     local.forEach(function (f) { seen[f.id] = 1; });
     html += local.length ? '<div class="card">' + local.map(foodRow).join('') + '</div>' : '';
-    [['off', 'Open Food Facts'], ['usda', 'USDA FoodData Central']].forEach(function (s) {
+    [['usda', 'USDA FoodData Central'], ['off', 'Open Food Facts']].forEach(function (s) {
       var r = ui.remote[s[0]];
       if (r.st === 'idle' || r.q !== ui.query) return;
       var foods = r.foods.filter(function (f) { return !seen[f.id]; });
       html += '<h2' + (r.st === 'load' ? ' class="dots"' : '') + '>' + s[1] + '</h2>';
-      if (r.st === 'err') html += '<div class="src-note">' + esc(r.msg) + '</div>';
+      if (r.st === 'err') html += '<div class="src-note">' + esc(r.msg) + (r.key ? ' <button class="link" data-act="keyhelp">How to get a free key</button>' : '') + '</div>';
       else if (foods.length) html += '<div class="card">' + foods.map(foodRow).join('') + '</div>';
       else if (r.st === 'done') html += '<div class="src-note">No matches.</div>';
     });
@@ -110,8 +110,8 @@
     $('#results').innerHTML = html;
   }
   function errText(name, e) {
-    if (e && e.status === 429) return name + ': rate limit reached' + (name === 'USDA' && settings().usdaKey === 'DEMO_KEY' ? ' (add your own free API key in Settings).' : '.');
-    if (e && e.status === 403) return name + ': API key rejected (check Settings).';
+    if (e && e.status === 429) return name + ': search limit reached' + (name === 'USDA' && settings().usdaKey === 'DEMO_KEY' ? ' for the shared demo key. A free key of your own removes the limit.' : '. Try again in a little while.');
+    if (e && e.status === 403) return name + ': the API key was not accepted. Check it in Settings.';
     return name + ' is unreachable right now (offline or blocked). Local foods still work.';
   }
   function remoteSearch(query) {
@@ -119,8 +119,8 @@
     clearTimeout(ui.timer);
     var s = settings(), sources = [];
     if (!ARTIFACT && query.length >= 2 && !/^\d+$/.test(query)) {   // artifacts cannot reach other hosts
-      if (s.useOFF) sources.push(['off', 'Open Food Facts', function (o) { return api.searchOFF(query, o); }]);
       if (s.useUSDA) sources.push(['usda', 'USDA', function (o) { return api.searchUSDA(query, s.usdaKey, o); }]);
+      if (s.useOFF) sources.push(['off', 'Open Food Facts', function (o) { return api.searchOFF(query, o); }]);
     }
     ['off', 'usda'].forEach(function (k) { ui.remote[k] = { st: 'idle', foods: [], q: query }; });
     if (!sources.length) return;
@@ -138,7 +138,7 @@
           if (ui.query === query) { ui.remote[src[0]] = { st: 'done', foods: foods, q: query }; renderResults(); }
         }).catch(function (e) {
           if (e && e.name === 'AbortError') return;
-          if (ui.query === query) { ui.remote[src[0]] = { st: 'err', foods: [], q: query, msg: errText(src[1], e) }; renderResults(); }
+          if (ui.query === query) { ui.remote[src[0]] = { st: 'err', foods: [], q: query, msg: errText(src[1], e), key: src[0] === 'usda' && !!e && (e.status === 429 || e.status === 403) }; renderResults(); }
         });
       });
       if (ui.query === query) renderResults();
@@ -216,14 +216,15 @@
     }
     var base = food.base || 'g', p = food.per100;
     var s = openSheet(
-      head(food.name, (food.brand ? food.brand + ' · ' : '') + kc(p.kcal) + ' kcal · P ' + g1(p.p) + ' · C ' + g1(p.c) + ' · F ' + g1(p.f) + ' per 100 ' + base,
+      head(food.name, (food.brand ? food.brand + ' · ' : '') + kc(p.kcal) + ' kcal · P ' + g1(p.p) + ' · net carbs ' + g1(N.net(p)) + ' · F ' + g1(p.f) + ' per 100 ' + base,
         '<button class="icon small star-btn' + (store.isFavorite(food.id) ? ' on' : '') + '" id="fav" aria-label="Favorite">★</button>') +
       '<div class="qty-row"><button class="step" id="minus" aria-label="Less">−</button>' +
       '<input id="qty" type="text" inputmode="decimal" autocomplete="off" aria-label="Quantity" value="' + N.fmt(qty, 2) + '">' +
       '<button class="step" id="plus" aria-label="More">+</button></div>' +
       '<div class="chips scroll" id="units"></div><div class="amount" id="amount"></div>' +
       '<div class="live"><div class="k"><b id="l-kcal"></b><span>kcal</span></div><div class="lp"><b id="l-p"></b><span>protein g</span></div>' +
-      '<div class="lc"><b id="l-c"></b><span>carbs g</span></div><div class="lf"><b id="l-f"></b><span>fat g</span></div></div>' +
+      '<div class="lc"><b id="l-c"></b><span>net carbs g</span></div><div class="lf"><b id="l-f"></b><span>fat g</span></div></div>' +
+      '<div class="amount" id="carb-detail"></div>' +
       mealChips(meal) +
       (entry ? '<div class="btn-row"><button class="btn danger" id="del">Delete</button><button class="btn primary" id="go">Save</button></div>'
         : '<div class="btn-row"><button class="btn primary big" id="go"></button></div>') +
@@ -235,7 +236,8 @@
     function live() {
       qty = N.num(qin.value);
       var amt = N.portionAmount(qty, cur), n = N.nutrientsFor(p, amt);
-      $('#l-kcal', s).textContent = kc(n.kcal); $('#l-p', s).textContent = g1(n.p); $('#l-c', s).textContent = g1(n.c); $('#l-f', s).textContent = g1(n.f);
+      $('#l-kcal', s).textContent = kc(n.kcal); $('#l-p', s).textContent = g1(n.p); $('#l-c', s).textContent = g1(N.net(n)); $('#l-f', s).textContent = g1(n.f);
+      $('#carb-detail', s).textContent = 'Total carbs ' + g1(n.c) + ' g − fiber ' + g1(n.fi) + ' g = net carbs ' + g1(N.net(n)) + ' g';
       $('#amount', s).textContent = cur.g === 1 ? '' : '= ' + N.fmt(amt, amt < 20 ? 1 : 0) + ' ' + base;
       if (!entry) $('#go', s).textContent = 'Add to ' + N.MEAL_LABEL[meal];
       $('#go', s).disabled = !(qty > 0);
@@ -291,7 +293,7 @@
     var food = store.getFood(e.foodId);
     if (!food) {   // food record gone: rebuild enough from the entry snapshot to rescale it
       var k = e.amount > 0 ? 100 / e.amount : 0;
-      food = { id: e.foodId, src: 'entry', name: e.name, brand: e.brand, base: e.base, per100: { kcal: e.kcal * k, p: e.p * k, c: e.c * k, f: e.f * k }, units: [{ label: e.unit, g: e.unitG }] };
+      food = { id: e.foodId, src: 'entry', name: e.name, brand: e.brand, base: e.base, per100: { kcal: e.kcal * k, p: e.p * k, c: e.c * k, f: e.f * k, fi: (e.fi || 0) * k }, units: [{ label: e.unit, g: e.unitG }] };
     }
     openPortion(food, e);
   }
@@ -301,8 +303,8 @@
     var meal = entry ? entry.meal : ui.meal || N.mealForTime(), e = entry || {};
     var s = openSheet(head(entry ? 'Edit quick add' : 'Quick add', 'Raw calories, no food lookup') +
       '<form class="form" id="f"><label>Calories (kcal)</label><input type="text" inputmode="decimal" id="qa-kcal" value="' + (entry ? kc(e.kcal) : '') + '">' +
-      '<label>Protein / carbs / fat in g (optional)</label><div class="grid4" style="grid-template-columns:repeat(3,1fr)">' +
-      '<input type="text" inputmode="decimal" id="qa-p" placeholder="P" value="' + (e.p ? g1(e.p) : '') + '"><input type="text" inputmode="decimal" id="qa-c" placeholder="C" value="' + (e.c ? g1(e.c) : '') + '">' +
+      '<label>Protein / net carbs / fat in g (optional)</label><div class="grid4" style="grid-template-columns:repeat(3,1fr)">' +
+      '<input type="text" inputmode="decimal" id="qa-p" placeholder="P" value="' + (e.p ? g1(e.p) : '') + '"><input type="text" inputmode="decimal" id="qa-c" placeholder="Net C" value="' + (N.net(e) ? g1(N.net(e)) : '') + '">' +
       '<input type="text" inputmode="decimal" id="qa-f" placeholder="F" value="' + (e.f ? g1(e.f) : '') + '"></div>' +
       '<label>Label (optional)</label><input type="text" id="qa-name" value="' + esc(entry ? e.name : '') + '" placeholder="Quick add">' + mealChips(meal) +
       '<div class="btn-row">' + (entry ? '<button type="button" class="btn danger" id="del">Delete</button>' : '') +
@@ -312,7 +314,7 @@
     if (entry) $('#del', s).onclick = function () { removeEntry(entry); };
     $('#f', s).onsubmit = function (ev) {
       ev.preventDefault();
-      var v = { kcal: N.num($('#qa-kcal', s).value), p: N.num($('#qa-p', s).value), c: N.num($('#qa-c', s).value), f: N.num($('#qa-f', s).value), name: $('#qa-name', s).value.trim() || 'Quick add' };
+      var v = { kcal: N.num($('#qa-kcal', s).value), p: N.num($('#qa-p', s).value), c: N.num($('#qa-c', s).value), f: N.num($('#qa-f', s).value), fi: 0, name: $('#qa-name', s).value.trim() || 'Quick add' };
       if (!v.kcal && (v.p || v.c || v.f)) v.kcal = N.round(N.kcalFromMacros(v.p, v.c, v.f), 0);
       if (!(v.kcal > 0)) { $('#qa-kcal', s).focus(); return; }
       if (entry) { store.updateEntry(entry.id, Object.assign({ meal: meal }, v)); ui.flash = entry.id; closeSheet(); renderAll(); return; }
@@ -337,9 +339,11 @@
       '<label>Brand (optional)</label><input type="text" id="cu-brand" value="' + esc(f.brand || '') + '">' +
       '<div class="label">Measured in</div><div class="chips" id="cu-base"><button type="button" class="chip' + (base === 'g' ? ' on' : '') + '" data-b="g">grams (solid)</button>' +
       '<button type="button" class="chip' + (base === 'ml' ? ' on' : '') + '" data-b="ml">ml (liquid)</button></div>' +
-      '<label>Per 100 <span id="cu-bl">' + base + '</span>: kcal / protein / carbs / fat</label><div class="grid4">' +
+      '<label>Per 100 <span id="cu-bl">' + base + '</span>: kcal / protein / total carbs / fat / fiber</label><div class="grid4 grid5">' +
       '<input type="text" inputmode="decimal" id="cu-kcal" placeholder="kcal" value="' + v(p.kcal) + '"><input type="text" inputmode="decimal" id="cu-p" placeholder="P" value="' + v(p.p) + '">' +
-      '<input type="text" inputmode="decimal" id="cu-c" placeholder="C" value="' + v(p.c) + '"><input type="text" inputmode="decimal" id="cu-f" placeholder="F" value="' + v(p.f) + '"></div>' +
+      '<input type="text" inputmode="decimal" id="cu-c" placeholder="C" value="' + v(p.c) + '"><input type="text" inputmode="decimal" id="cu-f" placeholder="F" value="' + v(p.f) + '">' +
+      '<input type="text" inputmode="decimal" id="cu-fi" placeholder="Fiber" value="' + (p.fi ? v(p.fi) : '') + '"></div>' +
+      '<div class="hint">Enter carbs as on a US label (fiber included). Fiber is optional; net carbs = carbs − fiber. For a European label, add the fiber to the carbs figure.</div>' +
       '<label>Household portions (optional): name and size</label>' + unitRow(0) + '<div style="height:8px"></div>' + unitRow(1) +
       '<div class="btn-row">' + (food ? '<button type="button" class="btn danger" id="del">Delete food</button>' : '') + '<button class="btn primary">Save food</button></div></form>');
     bindChips($('#cu-base', s), 'data-b', function (b) { base = b; $('#cu-bl', s).textContent = b; });
@@ -347,7 +351,8 @@
     $('#f', s).onsubmit = function (ev) {
       ev.preventDefault();
       var name = $('#cu-name', s).value.trim(); if (!name) { $('#cu-name', s).focus(); return; }
-      var per = { kcal: N.num($('#cu-kcal', s).value), p: N.num($('#cu-p', s).value), c: N.num($('#cu-c', s).value), f: N.num($('#cu-f', s).value) };
+      var per = { kcal: N.num($('#cu-kcal', s).value), p: N.num($('#cu-p', s).value), c: N.num($('#cu-c', s).value), f: N.num($('#cu-f', s).value), fi: N.num($('#cu-fi', s).value) };
+      if (per.fi > per.c) per.fi = per.c;
       if (!per.kcal) per.kcal = N.round(N.kcalFromMacros(per.p, per.c, per.f), 0);
       var units = [0, 1].map(function (i) {
         var l = $('#cu-l' + i, s).value.trim(), g = N.num($('#cu-g' + i, s).value);
@@ -397,17 +402,24 @@
   }
 
   /* ---------- settings ---------- */
-  function openSettings() {
+  var KEY_URL = 'https://fdc.nal.usda.gov/api-key-signup';
+  function openSettings(opts) {
     var st = settings(), t = st.targets;
     var s = openSheet(head('Settings') +
       '<form class="form" id="f"><div class="label">Daily targets</div><div class="grid4">' +
       '<div><label>kcal</label><input type="text" inputmode="decimal" id="t-kcal" value="' + kc(t.kcal) + '"></div><div><label>Protein g</label><input type="text" inputmode="decimal" id="t-p" value="' + kc(t.p) + '"></div>' +
-      '<div><label>Carbs g</label><input type="text" inputmode="decimal" id="t-c" value="' + kc(t.c) + '"></div><div><label>Fat g</label><input type="text" inputmode="decimal" id="t-f" value="' + kc(t.f) + '"></div></div>' +
+      '<div><label>Net carbs g</label><input type="text" inputmode="decimal" id="t-c" value="' + kc(t.c) + '"></div><div><label>Fat g</label><input type="text" inputmode="decimal" id="t-f" value="' + kc(t.f) + '"></div></div>' +
       (ARTIFACT ? '<div class="label">Food databases</div><div class="hint">Inside Claude the page cannot reach Open Food Facts or USDA, so search covers the built-in list, your custom foods and recents. The web version adds the online databases and barcodes.</div>'
         : '<div class="label">Food databases</div>' +
-      '<label class="check"><input type="checkbox" id="s-off"' + (st.useOFF ? ' checked' : '') + '> Open Food Facts (packaged products, barcodes)</label>' +
-      '<label class="check"><input type="checkbox" id="s-usda"' + (st.useUSDA ? ' checked' : '') + '> USDA FoodData Central (generic foods, portions)</label>' +
-      '<label>USDA API key</label><input type="text" id="s-key" autocomplete="off" value="' + esc(st.usdaKey) + '"><div class="hint">DEMO_KEY is limited to about 30 searches per hour. A free key from api.data.gov raises that to 1000.</div>') +
+      '<label class="check"><input type="checkbox" id="s-usda"' + (st.useUSDA ? ' checked' : '') + '> USDA FoodData Central (main database: generic and US branded foods, portions)</label>' +
+      '<label class="check"><input type="checkbox" id="s-off"' + (st.useOFF ? ' checked' : '') + '> Also search Open Food Facts (packaged products worldwide). Barcode lookup always uses it.</label>' +
+      '<label>USDA API key</label><input type="text" id="s-key" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + esc(st.usdaKey) + '">' +
+      '<div class="hint">DEMO_KEY is a shared key limited to about 30 searches per hour. Your own key is free and allows 1000 per hour.</div>' +
+      '<details class="help" id="key-help"' + (opts && opts.keyHelp ? ' open' : '') + '><summary>How to get a free key</summary><ol>' +
+      '<li>Open <a href="' + KEY_URL + '" target="_blank" rel="noopener">fdc.nal.usda.gov/api-key-signup</a>.</li>' +
+      '<li>Type your first name, last name and email address, then press Signup.</li>' +
+      '<li>The key, a long string of letters and numbers, arrives by email (it may also show on the page).</li>' +
+      '<li>Copy it, paste it into the USDA API key box above in place of DEMO_KEY, and press Save settings.</li></ol></details>') +
       '<div class="label">Units</div><label class="check"><input type="checkbox" id="s-imp"' + (st.imperial ? ' checked' : '') + '> Also offer oz / fl oz in portion picker (grams and ml stay the default)</label>' +
       (ARTIFACT ? '<div class="label">Storage</div><div class="hint" id="cloud-hint">' + esc(cloudLine()) + '</div>' +
         (caps.mcp ? '<div class="btn-row"><button type="button" class="btn" id="drive-backup">Back up to Google Drive</button></div><div class="hint" id="drive-hint">Creates a new backup file in your Drive through your Google Drive connector. To restore, download that file and use Import.</div>' : '')
@@ -419,7 +431,8 @@
       '<div class="btn-row"><button type="button" class="btn" id="imp-merge">Merge into my data</button><button type="button" class="btn danger" id="imp-replace">Replace my data</button></div></div>' +
       '<div class="btn-row"><button type="button" class="btn danger" id="wipe">Erase all data</button></div>' +
       '<div class="btn-row"><button class="btn primary big">Save settings</button></div>' +
-      '<div class="hint" style="text-align:center;margin-top:10px">Food Tracker rev 2 · ' + (ARTIFACT ? 'Claude artifact' : store.persistent ? 'stored on this device' : 'storage unavailable, session only') + '</div></form>');
+      '<div class="hint" style="text-align:center;margin-top:10px">Food Tracker rev 3 · ' + (ARTIFACT ? 'Claude artifact' : store.persistent ? 'stored on this device' : 'storage unavailable, session only') + '</div></form>');
+    if (opts && opts.keyHelp && $('#key-help', s)) $('#key-help', s).scrollIntoView({ block: 'center' });
     function collect() {
       var out = {
         targets: { kcal: N.num($('#t-kcal', s).value), p: N.num($('#t-p', s).value), c: N.num($('#t-c', s).value), f: N.num($('#t-f', s).value) },
@@ -555,6 +568,7 @@
       case 'next': ui.date = N.shiftDate(ui.date, 1); renderAll(); break;
       case 'today': ui.date = N.dateKey(); renderAll(); break;
       case 'settings': openSettings(); break;
+      case 'keyhelp': openSettings({ keyHelp: true }); break;
       case 'sync': doSync(true); break;
       case 'scan': openScan(); break;
       case 'cancel': endSearch(false); break;

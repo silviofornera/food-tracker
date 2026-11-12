@@ -1,4 +1,4 @@
-# Food Tracker (rev 2)
+# Food Tracker (rev 3)
 
 Fast, phone-first food and calorie log. Plain HTML/CSS/JS, no build step, no dependencies.
 Data lives on the device; Google Drive sync is optional.
@@ -6,9 +6,9 @@ Data lives on the device; Google Drive sync is optional.
 ## What it does
 
 - Search box is focused on load. Local matches (built-in foods, your recents, favorites, custom foods) appear on the
-  first keystroke; Open Food Facts and USDA FoodData Central results are added about 0.3 s after you stop typing.
+  first keystroke; USDA results (and Open Food Facts, if switched on) are added about 0.3 s after you stop typing.
 - Every result row has a round **+** that logs the food straight away with its last-used portion (or its first
-  household unit). Tapping the row opens the portion sheet instead: quantity x unit, live kcal/protein/carbs/fat, one tap on Add.
+  household unit). Tapping the row opens the portion sheet instead: quantity x unit, live kcal/protein/net carbs/fat, one tap on Add.
 - Portions: grams or ml always, plus household units ("1 chicken leg", "1 soda can (355 ml)", "1 slice", "1 cup",
   "1 tbsp"). Units come from USDA `foodMeasures`/`foodPortions`, Open Food Facts `serving_size`/package size, the
   built-in list, or what you define on a custom food.
@@ -52,11 +52,35 @@ files, bump `VERSION` in `sw.js`.
 
 ## Food databases
 
-- **Open Food Facts**: no key. Packaged products and barcodes.
-- **USDA FoodData Central**: ships with `DEMO_KEY`, which is rate-limited (roughly 30 requests/hour per IP). Get a free
-  key at https://fdc.nal.usda.gov/api-key-signup and paste it in Settings.
-- Either source can be switched off in Settings. A remote food is copied into local data the first time you log or star it,
-  so it is instant and offline afterwards.
+- **USDA FoodData Central** is the main database. Its results are listed first, generic foods before branded ones.
+- **Open Food Facts** search is optional and off by default (Settings -> "Also search Open Food Facts"). Barcode lookup
+  always uses Open Food Facts, whatever the toggle says.
+- A remote food is copied into local data the first time you log or star it, so it is instant and offline afterwards.
+
+### How to get a free USDA key
+
+The app ships with `DEMO_KEY`, a shared key limited to about 30 searches per hour. Your own key is free and allows 1000 per hour.
+
+1. Open https://fdc.nal.usda.gov/api-key-signup
+2. Type your first name, last name and email address, then press Signup.
+3. The key, a long string of letters and numbers, arrives by email.
+4. In the app: Settings -> USDA API key -> paste it in place of `DEMO_KEY` -> Save settings.
+
+The same steps are in the app under Settings -> "How to get a free key", and the rate-limit message links to them.
+
+## Net carbs
+
+Carbs are shown as **net carbs = total carbs - fiber**, never below 0: the daily total and target, the log rows (`NC`)
+and the portion sheet, which also shows the breakdown ("Total carbs 27 g - fiber 4 g = net carbs 23 g").
+
+- Stored data keeps total carbs (`c`) and fiber (`fi`) separately; net carbs are computed on display. Nothing stored is rewritten.
+- Fiber comes from USDA (nutrient 1079, "Fiber, total dietary"), Open Food Facts (`fiber_100g`), the built-in list, and
+  an optional fiber field on custom foods.
+- Entries and custom foods saved before rev 3 have no fiber, so their net carbs equal their carbs.
+- The carb target keeps its number and is now read as the net-carb target.
+- Label conventions: US and Canadian labels include fiber in carbohydrates; most other countries do not. For Open Food
+  Facts products sold outside the US/Canada the app adds fiber back to carbs before storing, so fiber is not subtracted twice.
+  For a custom food copied from a European label, add the fiber to the carbs figure yourself.
 
 ## Google Drive sync (optional)
 
@@ -79,7 +103,7 @@ tombstones for 90 days so they propagate. With no client ID the app never contac
 ## Single-file build (Claude artifact)
 
 ```
-node tools/build.js      # writes dist/index.html, about 98 kB, no external references
+node tools/build.js      # writes dist/index.html, about 103 kB, no external references
 ```
 
 `dist/index.html` also opens directly from disk and can be dropped on Apache as is. The same file detects where it runs:
@@ -100,7 +124,7 @@ overwrite them, so restore is: download the backup from Drive, then Settings -> 
 ## Tests
 
 ```
-node --test tests/*.test.js     # 40 unit tests: math, portions, store, merge, API normalizers, Drive sync, artifact db adapter (fakes)
+node --test tests/*.test.js     # 46 unit tests: math, net carbs, portions, store, migration, merge, API normalizers, Drive sync, artifact db adapter (fakes)
 python3 tests/smoke.py          # needs playwright + Chrome; drives the real UI, served and single-file, APIs mocked
 ```
 

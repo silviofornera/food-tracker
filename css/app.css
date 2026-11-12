@@ -35,7 +35,7 @@ button { background: none; border: 0; padding: 0; cursor: pointer; touch-action:
 .kcal-line .left.over { color: var(--accent); }
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 6px; }
 .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .25s ease; }
-.macros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 8px; font-size: 12px; color: var(--mute); }
+.macros { display: grid; grid-template-columns: repeat(3, 1fr); white-space: nowrap; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--mute); }
 .macros b { color: var(--ink); font-size: 13px; }
 .macros .bar { height: 4px; margin-top: 3px; }
 .m-p .bar i { background: var(--p); } .m-c .bar i { background: var(--c); } .m-f .bar i { background: var(--f); }
@@ -111,6 +111,14 @@ h2 .add { width: 30px; height: 30px; border-radius: 50%; background: var(--card)
 .form textarea { height: 110px; padding: 10px 12px; font: 12px/1.3 ui-monospace, Menlo, monospace; color: var(--ink); }
 .form input:focus, .form textarea:focus { border-color: var(--accent); }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.grid5 { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.grid5 input { padding: 0 6px !important; text-align: center; }
+.help { margin-top: 8px; font-size: 14px; }
+.help summary { color: var(--accent); font-weight: 600; cursor: pointer; padding: 8px 0; }
+.help ol { margin: 4px 0 8px; padding-left: 22px; color: var(--ink); }
+.help li { margin: 6px 0; }
+.help a { color: var(--accent); }
+.src-note .link { padding: 4px 0; }
 .grid2 { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
 .check { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 15px; color: var(--ink) !important; }
 .check input { width: 20px; height: 20px; accent-color: var(--accent); }

@@ -3,7 +3,8 @@
   'use strict';
   var FT = root.FT = root.FT || {};
 
-  var MACROS = ['kcal', 'p', 'c', 'f'];
+  /* c = total carbohydrate (US label convention, fiber included), fi = fiber. Net carbs are derived, never stored. */
+  var MACROS = ['kcal', 'p', 'c', 'f', 'fi'];
   var MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
   var MEAL_LABEL = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snacks' };
 
@@ -24,9 +25,13 @@
   /* amount in base units = qty x unit size */
   function portionAmount(qty, unit) { return num(qty) * num(unit && unit.g); }
 
+  /* Net carbs = carbs - fiber, never below 0. Missing fiber (old entries, quick adds) counts as 0, so net = carbs. */
+  function net(x) { return x ? Math.max(0, num(x.c) - num(x.fi)) : 0; }
+
+  /* Totals; nc (net carbs) is floored per item, so one odd row cannot push the day's total down. */
   function sum(list) {
-    var t = { kcal: 0, p: 0, c: 0, f: 0 };
-    (list || []).forEach(function (e) { MACROS.forEach(function (m) { t[m] += num(e[m]); }); });
+    var t = { kcal: 0, p: 0, c: 0, f: 0, fi: 0, nc: 0 };
+    (list || []).forEach(function (e) { MACROS.forEach(function (m) { t[m] += num(e[m]); }); t.nc += net(e); });
     return t;
   }
 
@@ -114,7 +119,7 @@
 
   FT.nutrition = {
     MACROS: MACROS, MEALS: MEALS, MEAL_LABEL: MEAL_LABEL, OZ: OZ, FLOZ: FLOZ,
-    num: num, round: round, nutrientsFor: nutrientsFor, portionAmount: portionAmount, sum: sum,
+    num: num, round: round, net: net, nutrientsFor: nutrientsFor, portionAmount: portionAmount, sum: sum,
     kcalFromMacros: kcalFromMacros, dateKey: dateKey, parseDateKey: parseDateKey, shiftDate: shiftDate,
     mealForTime: mealForTime, unitsFor: unitsFor, defaultPortion: defaultPortion, parseServing: parseServing, fmt: fmt
   };

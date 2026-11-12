@@ -2,7 +2,7 @@
    Same-origin GETs are served cache-first and refreshed in the background
    (stale-while-revalidate), so a new deploy shows up on the second launch.
    Bump VERSION to force-drop old caches. API calls (other origins) are never touched. */
-var VERSION = 'ft-r2';
+var VERSION = 'ft-r3';
 var SHELL = ['./', 'index.html', 'css/app.css', 'js/nutrition.js', 'js/foods-data.js', 'js/store.js', 'js/api.js', 'js/drive.js', 'js/cloud.js', 'js/app.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 

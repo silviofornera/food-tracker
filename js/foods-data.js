@@ -1,5 +1,5 @@
 /* Food Tracker - built-in offline starter foods.
-   Row: [id, name, kcal, protein, carb, fat (per 100 g or ml), base, [[unit label, g-or-ml], ...]]
+   Row: [id, name, kcal, protein, total carb, fat (per 100 g or ml), base, [[unit label, g-or-ml], ...]]
    Values are typical USDA-style averages, rounded. */
 (function (root) {
   'use strict';
@@ -88,10 +88,22 @@
     ['beer', 'Beer, regular', 43, 0.5, 3.6, 0, 'ml', [['1 can (355 ml)', 355], ['1 pint (473 ml)', 473], ['1 bottle (330 ml)', 330]]],
     ['wine-red', 'Wine, red', 85, 0.1, 2.6, 0, 'ml', [['1 glass (150 ml)', 150], ['1 bottle (750 ml)', 750]]]
   ];
+  /* Fiber per 100 g/ml (typical values). Foods not listed have none. Carbs above are total carbs, fiber included. */
+  var FIBER = {
+    apple: 2.4, banana: 2.6, orange: 2.4, strawberries: 2, blueberries: 2.4, grapes: 0.9, avocado: 6.7,
+    tomato: 1.2, carrot: 2.8, broccoli: 3.3, spinach: 2.2, lettuce: 1.3, cucumber: 0.5, 'bell-pepper': 2.1, onion: 1.7,
+    potato: 1.8, 'sweet-potato': 3.3, fries: 3.8,
+    'rice-white': 0.4, 'rice-brown': 1.6, pasta: 1.8, 'pasta-dry': 3.2, 'bread-white': 2.7, 'bread-wheat': 6, bagel: 2.2,
+    tortilla: 3, oats: 10.1, cereal: 3.3, quinoa: 2.8,
+    tofu: 2.3, 'beans-black': 8.7, lentils: 7.9,
+    'peanut-butter': 6, almonds: 12.5, walnuts: 6.7, ketchup: 0.3, honey: 0.2,
+    pizza: 2.3, hamburger: 0.9, chips: 4.4, 'chocolate-dark': 10.9, 'chocolate-milk': 3.4, cookie: 2.4, 'ice-cream': 0.7,
+    'orange-juice': 0.2
+  };
   FT.starterFoods = R.map(function (r) {
     return {
       id: 'st:' + r[0], src: 'starter', name: r[1], brand: '',
-      per100: { kcal: r[2], p: r[3], c: r[4], f: r[5] }, base: r[6],
+      per100: { kcal: r[2], p: r[3], c: r[4], f: r[5], fi: FIBER[r[0]] || 0 }, base: r[6],
       units: r[7].map(function (u) { return { label: u[0], g: u[1] }; })
     };
   });
